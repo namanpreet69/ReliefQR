@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReliefQR: Disaster Assistance App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // This configures Tailwind to use the 'dark' class on the <html> tag to apply dark mode styles.
+      tailwind.config = {
+        darkMode: 'class',
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "qrcode.react": "https://aistudiocdn.com/qrcode.react@^4.2.0",
+    "os": "https://aistudiocdn.com/os@^0.1.2"
+  }
+}
+</script>
+</head>
+  <body class="bg-gradient-to-br from-red-100 via-yellow-100 to-orange-100 dark:from-gray-900 dark:to-red-900/50">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

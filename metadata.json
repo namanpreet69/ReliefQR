@@ -1,0 +1,9 @@
+{
+  "name": "ReliefQR: Disaster Assistance App",
+  "description": "A multimodal, offline-ready web app to assist field responders and affected individuals during disaster scenarios. It combines AI chat, camera-based injury/scene classification, and QR/PDF output to streamline relief coordination.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation",
+    "microphone"
+  ]
+}
