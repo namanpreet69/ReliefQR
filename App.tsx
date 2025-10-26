@@ -1,8 +1,8 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { AppStep, Language, ChatMessage, ReportData, PersonData, UserRole, HospitalData, ChatMode } from './types';
 import { UI_TEXT, EMERGENCY_CONTACTS } from './constants';
 import * as GeminiService from './services/geminiService';
-import { Chat } from '@google/genai';
 import { WaterIcon, FoodIcon, InjuryIcon, ShelterIcon, GenerateReportIcon, ScanQRIcon, AnalyzeImageIcon, ReliefQRLogo, MoonIcon, SunIcon, PhoneIcon, HospitalIcon, DirectionsIcon, HelpIcon, AccessibilityIcon, TextToSpeechIcon, SpeechToTextIcon, MicrophoneIcon, MicrophoneOffIcon, EmergencyIcon } from './components/IconComponents';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -24,58 +24,6 @@ declare global {
     webkitSpeechRecognition: new () => SpeechRecognition;
   }
 }
-
-const ApiKeyModal: React.FC<{ onApiKeySubmit: (key: string) => void }> = ({ onApiKeySubmit }) => {
-    const [apiKey, setApiKey] = useState('');
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (apiKey.trim()) {
-            onApiKeySubmit(apiKey.trim());
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md">
-                <h2 className="text-2xl font-bold text-center mb-4">Enter Gemini API Key</h2>
-                <p className="text-center text-gray-600 dark:text-gray-400 mb-6">
-                    This app requires a Google Gemini API key to function.
-                </p>
-                
-                <div className="text-sm text-left bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mb-6">
-                    <p className="font-bold mb-2 text-gray-800 dark:text-gray-100">How to get your key:</p>
-                    <ol className="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
-                        <li>
-                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-red-600 dark:text-red-400 hover:underline font-semibold">
-                                Open Google AI Studio in a new tab.
-                            </a> 
-                        </li>
-                        <li>Click the "<strong className="font-semibold text-gray-900 dark:text-gray-100">Create API key in new project</strong>" button.</li>
-                        <li><strong className="font-semibold text-gray-900 dark:text-gray-100">Immediately copy</strong> the new key that appears. For security, it will not be shown again.</li>
-                        <li>Paste the key into the field below and click Continue.</li>
-                    </ol>
-                </div>
-
-                <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="w-full p-3 mb-6 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none bg-white dark:bg-gray-700 shadow-inner"
-                    placeholder="Paste your API Key here"
-                />
-                <button
-                    type="submit"
-                    className="w-full py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-shadow disabled:opacity-50"
-                    disabled={!apiKey.trim()}
-                >
-                    Continue
-                </button>
-            </form>
-        </div>
-    );
-};
-
 
 // Speech Recognition Hook
 const useSpeechRecognition = (lang: Language) => {
@@ -431,30 +379,25 @@ const ChatWindow: React.FC<{ lang: Language; role: UserRole; onComplete: (data: 
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [imageStatus, setImageStatus] = useState('');
     
-    const chatRef = useRef<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const { transcript, isListening, startListening, stopListening, setTranscript } = useSpeechRecognition(lang);
 
     useEffect(() => { setInput(transcript); }, [transcript]);
-
-    useEffect(() => { 
-        chatRef.current = GeminiService.startChat(lang, role, ChatMode.QR); 
-        if(isTtsEnabled) speak(welcomeMsg, lang);
-    }, [lang, role, isTtsEnabled, welcomeMsg]);
-
+    useEffect(() => { if (isTtsEnabled) speak(welcomeMsg, lang); }, [lang, role, isTtsEnabled, welcomeMsg]);
     useEffect(() => { if(chatContainerRef.current) { chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; } }, [messages]);
 
     const handleSend = useCallback(async (messageText: string) => {
-        if (!messageText.trim() || isLoading || !chatRef.current) return;
+        if (!messageText.trim() || isLoading) return;
         
         const userMessage: ChatMessage = { sender: 'user', text: messageText };
-        setMessages(prev => [...prev, userMessage]);
+        const newMessages = [...messages, userMessage];
+        setMessages(newMessages);
         setInput('');
         setTranscript('');
         setIsLoading(true);
 
         try {
-            const botResponseText = await GeminiService.sendMessage(chatRef.current, messageText);
+            const botResponseText = await GeminiService.sendMessage(newMessages, lang, role, ChatMode.QR);
             
             if (isTtsEnabled) speak(botResponseText, lang);
 
@@ -469,11 +412,12 @@ const ChatWindow: React.FC<{ lang: Language; role: UserRole; onComplete: (data: 
                  setMessages(prev => [...prev, { sender: 'bot', text: botResponseText }]);
             }
         } catch (error) {
-            setMessages(prev => [...prev, { sender: 'bot', text: text.error }]);
+            const errorMessage = error instanceof Error ? error.message : text.error;
+            setMessages(prev => [...prev, { sender: 'bot', text: errorMessage }]);
         } finally {
             setIsLoading(false);
         }
-    }, [isLoading, onComplete, text.error, text.uploadPhoto, lang, isTtsEnabled, setTranscript]);
+    }, [isLoading, onComplete, text.error, text.uploadPhoto, lang, isTtsEnabled, setTranscript, messages, role]);
 
     const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -579,38 +523,34 @@ const HelpChatWindow: React.FC<{ lang: Language; isTtsEnabled: boolean; }> = ({ 
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     
-    const chatRef = useRef<Chat | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
     const { transcript, isListening, startListening, stopListening, setTranscript } = useSpeechRecognition(lang);
 
     useEffect(() => { setInput(transcript); }, [transcript]);
-
-    useEffect(() => { 
-        chatRef.current = GeminiService.startChat(lang, UserRole.PersonInNeed, ChatMode.Help);
-        if(isTtsEnabled) speak(text.helpChatWelcome, lang);
-    }, [lang, isTtsEnabled, text.helpChatWelcome]);
-
+    useEffect(() => { if (isTtsEnabled) speak(text.helpChatWelcome, lang); }, [isTtsEnabled, text.helpChatWelcome, lang]);
     useEffect(() => { if(chatContainerRef.current) { chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight; } }, [messages]);
 
     const handleSend = useCallback(async (messageText: string) => {
-        if (!messageText.trim() || isLoading || !chatRef.current) return;
+        if (!messageText.trim() || isLoading) return;
         
         const userMessage: ChatMessage = { sender: 'user', text: messageText };
-        setMessages(prev => [...prev, userMessage]);
+        const newMessages = [...messages, userMessage];
+        setMessages(newMessages);
         setInput('');
         setTranscript('');
         setIsLoading(true);
 
         try {
-            const botResponseText = await GeminiService.sendMessage(chatRef.current, messageText);
+            const botResponseText = await GeminiService.sendMessage(newMessages, lang, UserRole.PersonInNeed, ChatMode.Help);
             if (isTtsEnabled) speak(botResponseText, lang);
             setMessages(prev => [...prev, { sender: 'bot', text: botResponseText }]);
         } catch (error) {
-            setMessages(prev => [...prev, { sender: 'bot', text: text.error }]);
+            const errorMessage = error instanceof Error ? error.message : text.error;
+            setMessages(prev => [...prev, { sender: 'bot', text: errorMessage }]);
         } finally {
             setIsLoading(false);
         }
-    }, [isLoading, text.error, isTtsEnabled, lang, setTranscript]);
+    }, [isLoading, isTtsEnabled, lang, setTranscript, messages, text.error]);
 
     const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
@@ -954,7 +894,6 @@ const AccessibilityMenu: React.FC<{
 
 
 export default function App() {
-  const [apiKey, setApiKey] = useState<string | null>(() => sessionStorage.getItem('gemini-api-key'));
   const [step, setStep] = useState<AppStep>(AppStep.LanguageSelect);
   const [language, setLanguage] = useState<Language>('en');
   const [userRole, setUserRole] = useState<UserRole | null>(null);
@@ -974,18 +913,6 @@ export default function App() {
   const [isSttEnabled, setIsSttEnabled] = useState(false);
 
   useEffect(() => {
-    if (apiKey) {
-      try {
-        GeminiService.initializeAi(apiKey);
-      } catch (error) {
-        console.error("Failed to initialize Gemini Service", error);
-        sessionStorage.removeItem('gemini-api-key');
-        setApiKey(null);
-      }
-    }
-  }, [apiKey]);
-
-  useEffect(() => {
     if (theme === 'dark') {
         document.documentElement.classList.add('dark');
         localStorage.setItem('theme', 'dark');
@@ -994,11 +921,6 @@ export default function App() {
         localStorage.setItem('theme', 'light');
     }
   }, [theme]);
-
-  const handleApiKeySubmit = (key: string) => {
-    sessionStorage.setItem('gemini-api-key', key);
-    setApiKey(key);
-  };
 
   const handleThemeToggle = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
@@ -1085,10 +1007,6 @@ export default function App() {
         return <LanguageSelector onSelect={handleLanguageSelect} />;
     }
   };
-
-  if (!apiKey) {
-    return <ApiKeyModal onApiKeySubmit={handleApiKeySubmit} />;
-  }
 
   return (
     <main className="container mx-auto p-2 sm:p-4 h-screen max-h-screen text-gray-800 dark:text-gray-200 relative">

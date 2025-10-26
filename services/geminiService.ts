@@ -1,22 +1,5 @@
-import { GoogleGenAI, Chat } from '@google/genai';
-import { Language, UserRole, HospitalData, ChatMode } from '../types';
 
-let ai: GoogleGenAI | null = null;
-
-export const initializeAi = (apiKey: string) => {
-  if (!apiKey) {
-    throw new Error("API_KEY must be provided to initialize the service.");
-  }
-  ai = new GoogleGenAI({ apiKey });
-  return ai;
-};
-
-const getAi = () => {
-    if (!ai) {
-        throw new Error("Gemini AI service not initialized. Please set the API key.");
-    }
-    return ai;
-}
+import { Language, UserRole, HospitalData, ChatMode, ChatMessage } from '../types';
 
 const getSystemInstruction = (lang: Language, role: UserRole, mode: ChatMode): string => {
   const langInstruction = lang === 'hi' ? 'You must respond only in Hindi.' : 'You must respond only in English.';
@@ -33,80 +16,86 @@ const getSystemInstruction = (lang: Language, role: UserRole, mode: ChatMode): s
   return `You are 'ReliefBot', a calm and efficient AI assistant for disaster relief. Your goal is to quickly gather essential information from a person in distress. Speak in simple, clear language. Ask one question at a time. ${langInstruction} First, ask for their name, approximate age, and current location. Then, ask about their immediate needs (water, food, shelter). Then, ask if they are injured. If they are, ask them to describe the injury or say "UPLOAD_PHOTO" for them to upload a photo. After gathering all information, you MUST summarize it in a single JSON object with the following structure and nothing else: \`\`\`json\n{"name": "...", "age": ..., "location": "...", "needs": ["..."], "injuryDetails": "...", "photoAnalysis": ""}\n\`\`\` Do not add any text before or after this JSON object.`;
 };
 
-export const startChat = (lang: Language, role: UserRole, mode: ChatMode): Chat => {
-  return getAi().chats.create({
-    model: 'gemini-2.5-flash',
-    config: {
-      systemInstruction: getSystemInstruction(lang, role, mode),
-    },
-  });
-};
 
-export const sendMessage = async (chat: Chat, message: string): Promise<string> => {
-  try {
-    const response = await chat.sendMessage({ message });
-    return response.text;
-  } catch (error) {
-    console.error("Error sending message to Gemini:", error);
-    throw new Error("Failed to get response from AI.");
-  }
+export const sendMessage = async (messages: ChatMessage[], lang: Language, role: UserRole, mode: ChatMode): Promise<string> => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.sender !== 'user') {
+        throw new Error("Last message must be from the user.");
+    }
+    
+    // Convert ChatMessage[] to the format the Gemini API expects for history.
+    const history = messages.slice(0, -1).map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }]
+    }));
+
+    try {
+        const res = await fetch('/api/gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'chat',
+                payload: {
+                    history,
+                    message: lastMessage.text,
+                    systemInstruction: getSystemInstruction(lang, role, mode)
+                }
+            })
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || "API request failed");
+        }
+
+        const data = await res.json();
+        return data.text;
+    } catch (error) {
+        console.error("Error sending message via proxy:", error);
+        throw new Error("Failed to get response from AI.");
+    }
 };
 
 export const analyzeImage = async (base64Image: string, mimeType: string): Promise<string> => {
   try {
-    const response = await getAi().models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: {
-            parts: [
-                {
-                    inlineData: {
-                        mimeType,
-                        data: base64Image,
-                    },
-                },
-                {
-                    text: "Analyze this image from a disaster zone. Concisely describe any visible injuries (e.g., 'deep cut on forearm', 'burns on leg') or environmental hazards (e.g., 'collapsed structure', 'flooding'). Focus on facts. Maximum 50 words.",
-                }
-            ]
-        }
+    const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'analyzeImage',
+            payload: { base64Image, mimeType }
+        })
     });
-    return response.text;
+    if (!res.ok) { 
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'API request failed');
+    }
+    const data = await res.json();
+    return data.text;
   } catch (error) {
-    console.error("Error analyzing image with Gemini:", error);
+    console.error("Error analyzing image with proxy:", error);
     throw new Error("Failed to analyze image.");
   }
 };
 
 export const findNearbyHospitals = async (lat: number, lng: number): Promise<HospitalData[]> => {
   try {
-    const response = await getAi().models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: "Find the 5 nearest hospitals",
-      config: {
-        tools: [{googleMaps: {}}],
-        toolConfig: {
-          retrievalConfig: {
-            latLng: {
-              latitude: lat,
-              longitude: lng,
-            }
-          }
-        }
-      },
+    const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'findNearbyHospitals',
+            payload: { lat, lng }
+        })
     });
-
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    const hospitals: HospitalData[] = chunks
-      .filter(chunk => chunk.maps && chunk.maps.uri && chunk.maps.title)
-      .map(chunk => ({
-        name: chunk.maps.title,
-        mapsUri: chunk.maps.uri,
-      }))
-      .slice(0, 5); // Ensure we only ever return a maximum of 5 hospitals
-
-    return hospitals;
+    if (!res.ok) { 
+      const errorData = await res.json();
+      throw new Error(errorData.error || 'API request failed');
+    }
+    const data = await res.json();
+    return data.hospitals;
   } catch (error) {
-    console.error("Error finding hospitals with Gemini:", error);
+    console.error("Error finding hospitals with proxy:", error);
     throw new Error("Failed to find nearby hospitals.");
   }
 };
