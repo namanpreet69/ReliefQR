@@ -1,11 +1,22 @@
 import { GoogleGenAI, Chat } from '@google/genai';
 import { Language, UserRole, HospitalData, ChatMode } from '../types';
 
-if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
+let ai: GoogleGenAI | null = null;
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const initializeAi = (apiKey: string) => {
+  if (!apiKey) {
+    throw new Error("API_KEY must be provided to initialize the service.");
+  }
+  ai = new GoogleGenAI({ apiKey });
+  return ai;
+};
+
+const getAi = () => {
+    if (!ai) {
+        throw new Error("Gemini AI service not initialized. Please set the API key.");
+    }
+    return ai;
+}
 
 const getSystemInstruction = (lang: Language, role: UserRole, mode: ChatMode): string => {
   const langInstruction = lang === 'hi' ? 'You must respond only in Hindi.' : 'You must respond only in English.';
@@ -23,7 +34,7 @@ const getSystemInstruction = (lang: Language, role: UserRole, mode: ChatMode): s
 };
 
 export const startChat = (lang: Language, role: UserRole, mode: ChatMode): Chat => {
-  return ai.chats.create({
+  return getAi().chats.create({
     model: 'gemini-2.5-flash',
     config: {
       systemInstruction: getSystemInstruction(lang, role, mode),
@@ -43,7 +54,7 @@ export const sendMessage = async (chat: Chat, message: string): Promise<string> 
 
 export const analyzeImage = async (base64Image: string, mimeType: string): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
         model: 'gemini-2.5-flash',
         contents: {
             parts: [
@@ -68,7 +79,7 @@ export const analyzeImage = async (base64Image: string, mimeType: string): Promi
 
 export const findNearbyHospitals = async (lat: number, lng: number): Promise<HospitalData[]> => {
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: "gemini-2.5-flash",
       contents: "Find the 5 nearest hospitals",
       config: {

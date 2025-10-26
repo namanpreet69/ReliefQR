@@ -25,6 +25,58 @@ declare global {
   }
 }
 
+const ApiKeyModal: React.FC<{ onApiKeySubmit: (key: string) => void }> = ({ onApiKeySubmit }) => {
+    const [apiKey, setApiKey] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (apiKey.trim()) {
+            onApiKeySubmit(apiKey.trim());
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md">
+                <h2 className="text-2xl font-bold text-center mb-4">Enter Gemini API Key</h2>
+                <p className="text-center text-gray-600 dark:text-gray-400 mb-6">
+                    This app requires a Google Gemini API key to function.
+                </p>
+                
+                <div className="text-sm text-left bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mb-6">
+                    <p className="font-bold mb-2 text-gray-800 dark:text-gray-100">How to get your key:</p>
+                    <ol className="list-decimal list-inside space-y-2 text-gray-700 dark:text-gray-300">
+                        <li>
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-red-600 dark:text-red-400 hover:underline font-semibold">
+                                Open Google AI Studio in a new tab.
+                            </a> 
+                        </li>
+                        <li>Click the "<strong className="font-semibold text-gray-900 dark:text-gray-100">Create API key in new project</strong>" button.</li>
+                        <li><strong className="font-semibold text-gray-900 dark:text-gray-100">Immediately copy</strong> the new key that appears. For security, it will not be shown again.</li>
+                        <li>Paste the key into the field below and click Continue.</li>
+                    </ol>
+                </div>
+
+                <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="w-full p-3 mb-6 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none bg-white dark:bg-gray-700 shadow-inner"
+                    placeholder="Paste your API Key here"
+                />
+                <button
+                    type="submit"
+                    className="w-full py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-shadow disabled:opacity-50"
+                    disabled={!apiKey.trim()}
+                >
+                    Continue
+                </button>
+            </form>
+        </div>
+    );
+};
+
+
 // Speech Recognition Hook
 const useSpeechRecognition = (lang: Language) => {
     const [transcript, setTranscript] = useState('');
@@ -902,6 +954,7 @@ const AccessibilityMenu: React.FC<{
 
 
 export default function App() {
+  const [apiKey, setApiKey] = useState<string | null>(() => sessionStorage.getItem('gemini-api-key'));
   const [step, setStep] = useState<AppStep>(AppStep.LanguageSelect);
   const [language, setLanguage] = useState<Language>('en');
   const [userRole, setUserRole] = useState<UserRole | null>(null);
@@ -920,6 +973,17 @@ export default function App() {
   const [isTtsEnabled, setIsTtsEnabled] = useState(false);
   const [isSttEnabled, setIsSttEnabled] = useState(false);
 
+  useEffect(() => {
+    if (apiKey) {
+      try {
+        GeminiService.initializeAi(apiKey);
+      } catch (error) {
+        console.error("Failed to initialize Gemini Service", error);
+        sessionStorage.removeItem('gemini-api-key');
+        setApiKey(null);
+      }
+    }
+  }, [apiKey]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -930,6 +994,11 @@ export default function App() {
         localStorage.setItem('theme', 'light');
     }
   }, [theme]);
+
+  const handleApiKeySubmit = (key: string) => {
+    sessionStorage.setItem('gemini-api-key', key);
+    setApiKey(key);
+  };
 
   const handleThemeToggle = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
@@ -1016,6 +1085,10 @@ export default function App() {
         return <LanguageSelector onSelect={handleLanguageSelect} />;
     }
   };
+
+  if (!apiKey) {
+    return <ApiKeyModal onApiKeySubmit={handleApiKeySubmit} />;
+  }
 
   return (
     <main className="container mx-auto p-2 sm:p-4 h-screen max-h-screen text-gray-800 dark:text-gray-200 relative">
